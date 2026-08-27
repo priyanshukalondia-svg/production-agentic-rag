@@ -93,8 +93,8 @@ production-agentic-rag/
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/YOUR-REPOSITORY.git
-cd YOUR-REPOSITORY
+git clone https://github.com/priyanshukalondia-svg/production-agentic-rag.git
+cd production-agentic-rag
 ```
 
 ### 2. Create and activate a virtual environment
