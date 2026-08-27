@@ -6,7 +6,7 @@ I built the frontend for this project and connected it with the existing RAG bac
 
 The system takes a user's question, retrieves relevant information from the available knowledge base, and generates an answer along with citations and evaluation details.
 
-![Agentic RAG Interface](./Interface image.png)
+![Agentic RAG Interface](./interface-image.png)
 
 ## What it does
 
