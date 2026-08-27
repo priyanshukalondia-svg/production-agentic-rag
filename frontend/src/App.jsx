@@ -10,15 +10,14 @@ import {
   Database,
   FileText,
   Menu,
-  MessageSquare,
   PanelLeftClose,
-  RotateCcw,
   Search,
   Sparkles,
   User,
-  X,
 } from "lucide-react";
 import "./App.css";
+
+const API_URL = "https://production-agentic-rag.onrender.com";
 
 function App() {
   const [question, setQuestion] = useState("");
@@ -57,7 +56,7 @@ function App() {
     setLoading(true);
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/ask", {
+      const response = await fetch(`${API_URL}/ask`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -68,7 +67,7 @@ function App() {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to get response");
+        throw new Error(`Server error: ${response.status}`);
       }
 
       const data = await response.json();
@@ -85,14 +84,14 @@ function App() {
         },
       ]);
     } catch (error) {
-      console.error(error);
+      console.error("API error:", error);
 
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
           content:
-            "I couldn't connect to the RAG server. Please make sure the FastAPI backend is running.",
+            "I couldn't connect to the RAG server. The backend may be waking up or temporarily unavailable. Please try again in a moment.",
           error: true,
         },
       ]);
@@ -155,18 +154,22 @@ function App() {
               {sidebarOpen && (
                 <div className="brand-text">
                   <span className="brand-name">Agentic RAG</span>
-                  <span className="brand-subtitle">Knowledge Intelligence</span>
+                  <span className="brand-subtitle">
+                    Knowledge Intelligence
+                  </span>
                 </div>
               )}
             </div>
 
-            <button
-              className="icon-button sidebar-toggle"
-              onClick={() => setSidebarOpen(false)}
-              title="Collapse sidebar"
-            >
-              <PanelLeftClose size={18} />
-            </button>
+            {sidebarOpen && (
+              <button
+                className="icon-button sidebar-toggle"
+                onClick={() => setSidebarOpen(false)}
+                title="Collapse sidebar"
+              >
+                <PanelLeftClose size={18} />
+              </button>
+            )}
           </div>
 
           <button className="new-chat-button" onClick={clearChat}>
@@ -197,7 +200,7 @@ function App() {
                 <span className="sidebar-label">CONVERSATION</span>
 
                 <button className="conversation-item active">
-                  <MessageSquare size={16} />
+                  <Bot size={16} />
                   <span>Current conversation</span>
                 </button>
               </div>
@@ -240,6 +243,7 @@ function App() {
               <button
                 className="icon-button mobile-sidebar-button"
                 onClick={() => setSidebarOpen(true)}
+                title="Open sidebar"
               >
                 <Menu size={20} />
               </button>
@@ -311,15 +315,21 @@ function App() {
                         : "You"}
                     </div>
 
-                    <div className={`message-text ${message.error ? "error" : ""}`}>
+                    <div
+                      className={`message-text ${
+                        message.error ? "error" : ""
+                      }`}
+                    >
                       {message.content}
                     </div>
 
-                    {message.role === "assistant" && (
+                    {message.role === "assistant" && !message.error && (
                       <div className="message-actions">
                         <button
                           className="message-action"
-                          onClick={() => copyMessage(message.content, index)}
+                          onClick={() =>
+                            copyMessage(message.content, index)
+                          }
                         >
                           {detailsOpen[`copied-${index}`] ? (
                             <>
@@ -357,7 +367,9 @@ function App() {
                         <div className="response-details">
                           {message.citations?.length > 0 && (
                             <div className="sources-section">
-                              <span className="detail-label">SOURCES</span>
+                              <span className="detail-label">
+                                SOURCES
+                              </span>
 
                               <div className="source-chips">
                                 {message.citations.map((citation) => (
@@ -397,7 +409,9 @@ function App() {
                               <div className="quality-item">
                                 <span>SAFETY</span>
                                 <strong>
-                                  {message.blocked ? "Blocked" : "Passed"}
+                                  {message.blocked
+                                    ? "Blocked"
+                                    : "Passed"}
                                 </strong>
                               </div>
                             )}
@@ -421,7 +435,9 @@ function App() {
                   </div>
 
                   <div className="message-wrapper">
-                    <div className="message-label">Agentic RAG</div>
+                    <div className="message-label">
+                      Agentic RAG
+                    </div>
 
                     <div className="thinking-state">
                       <div className="thinking-dots">
