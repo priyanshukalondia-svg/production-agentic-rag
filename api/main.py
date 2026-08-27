@@ -15,7 +15,9 @@ from production_agentic_rag.ingestion.loaders import load_directory
 app = FastAPI(title="Production Agentic RAG", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
