@@ -17,6 +17,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
+        "https://frontend-five-phi-44.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
