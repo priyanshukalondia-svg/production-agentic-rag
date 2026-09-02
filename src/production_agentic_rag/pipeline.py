@@ -6,8 +6,8 @@ from typing import Any
 from .agents.rag_agent import AgenticRAG
 from .agents.tools import RetrievalTool
 from .config import Settings
-from .guardrails import GuardrailReport, InputBlocked, check_input, grounding_score, redact_pii
-from .ingestion.chunking import CHUNKERS
+from .guardrails import InputBlocked, check_input, grounding_score, redact_pii
+from .ingestion.chunking import CHUNKERS, Chunk
 from .ingestion.loaders import Document
 from .observability import Tracer
 from .providers.embeddings import build_embedder
@@ -34,8 +34,13 @@ class QueryResult:
 class RAGPipeline:
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or Settings()
+        self.custom_knowledge: dict[str, list[dict[str, Any]]] = {"handbook": [], "qa": []}
+        self._custom_handbook_texts: dict[str, str] = {}
+        self.custom_enabled = False
         self.retriever = HybridRetriever(
-            embedder=build_embedder(self.settings.embed_provider, self.settings.embed_model))
+            embedder=build_embedder(self.settings.embed_provider, self.settings.embed_model),
+            custom_enabled=self.custom_enabled,
+        )
         self.llm = build_llm(self.settings.llm_provider, self.settings.llm_model)
         self.tool = RetrievalTool(self.retriever, k=self.settings.top_k,
                                   candidate_k=self.settings.candidate_k,
@@ -61,6 +66,34 @@ class RAGPipeline:
                 pass  # fall back gracefully
         return self.agent
 
+    def enable_custom_knowledge(self, enabled: bool) -> bool:
+        self.custom_enabled = bool(enabled)
+        self.retriever.set_custom_enabled(self.custom_enabled)
+        return self.custom_enabled
+
+    def list_custom_knowledge(self) -> dict[str, Any]:
+        return {
+            "enabled": self.custom_enabled,
+            "handbook": self.custom_knowledge["handbook"],
+            "qa": self.custom_knowledge["qa"],
+        }
+
+    def remove_custom_knowledge(self) -> None:
+        self.custom_knowledge = {"handbook": [], "qa": []}
+        self._custom_handbook_texts = {}
+        self.retriever.clear_custom()
+        self.enable_custom_knowledge(False)
+
+    def _reindex_custom_knowledge(self) -> None:
+        self.retriever.clear_custom()
+        for handbook in self.custom_knowledge["handbook"]:
+            doc_id = handbook.get("id") or handbook.get("name") or "custom-doc"
+            text = self._custom_handbook_texts.get(doc_id, handbook.get("text_preview", ""))
+            if text:
+                self.add_custom_document(text, doc_id.removeprefix("custom:"), strategy="section")
+        for qa in self.custom_knowledge["qa"]:
+            self.add_custom_qa(qa["question"], qa["answer"], qa["id"])
+
     # ingestion ---------------------------------------------------------------
     def add_document(self, text: str, doc_id: str = "doc", strategy: str = "section") -> int:
         chunker = CHUNKERS[strategy]
@@ -70,6 +103,83 @@ class RAGPipeline:
 
     def add_documents(self, docs: list[Document], strategy: str = "section") -> int:
         return sum(self.add_document(d.text, d.doc_id, strategy) for d in docs)
+
+    def add_custom_document(self, text: str, doc_id: str = "custom-doc", strategy: str = "section") -> int:
+        if not text or not text.strip():
+            raise ValueError("Custom handbook text cannot be empty.")
+        normalized_id = doc_id if doc_id.startswith("custom:") else f"custom:{doc_id}"
+        chunker = CHUNKERS[strategy]
+        chunks = chunker(text, doc_id=normalized_id)
+        for chunk in chunks:
+            chunk.metadata["source"] = "custom"
+            chunk.metadata["source_type"] = "handbook"
+        self.retriever.index_custom(chunks)
+        self._custom_handbook_texts[normalized_id] = text
+        existing = next((item for item in self.custom_knowledge["handbook"] if item["id"] == normalized_id), None)
+        payload = {
+            "id": normalized_id,
+            "name": doc_id,
+            "source": "custom",
+            "source_type": "handbook",
+            "chunk_count": len(chunks),
+            "text_preview": text[:180],
+            "text": text,
+        }
+        if existing is not None:
+            existing.clear()
+            existing.update(payload)
+        else:
+            self.custom_knowledge["handbook"].append(payload)
+        return len(chunks)
+
+    def add_custom_qa(self, question: str, answer: str, qa_id: str | None = None) -> str:
+        question = (question or "").strip()
+        answer = (answer or "").strip()
+        if not question or not answer:
+            raise ValueError("Custom Q&A requires both a question and an answer.")
+        qa_key = qa_id or f"qa-{len(self.custom_knowledge['qa']) + 1}"
+        chunk_id = f"custom:qa:{qa_key}"
+        chunk = Chunk(
+            id=chunk_id,
+            text=f"Q: {question}\nA: {answer}",
+            metadata={
+                "source": "custom",
+                "source_type": "qa",
+                "question": question,
+                "answer": answer,
+                "qa_id": qa_key,
+            },
+        )
+        self.retriever.index_custom([chunk])
+        self.custom_knowledge["qa"].append({
+            "id": qa_key,
+            "question": question,
+            "answer": answer,
+            "source": "custom",
+            "source_type": "qa",
+        })
+        return qa_key
+
+    def update_custom_qa(self, qa_id: str, question: str, answer: str) -> dict[str, Any]:
+        for item in self.custom_knowledge["qa"]:
+            if item["id"] == qa_id:
+                question = question.strip()
+                answer = answer.strip()
+                if not question or not answer:
+                    raise ValueError("Custom Q&A requires both a question and an answer.")
+                item["question"] = question
+                item["answer"] = answer
+                self._reindex_custom_knowledge()
+                return item
+        raise KeyError(f"QA item {qa_id!r} not found")
+
+    def delete_custom_qa(self, qa_id: str) -> None:
+        original = self.custom_knowledge["qa"]
+        filtered = [item for item in original if item["id"] != qa_id]
+        if len(filtered) == len(original):
+            raise KeyError(f"QA item {qa_id!r} not found")
+        self.custom_knowledge["qa"] = filtered
+        self._reindex_custom_knowledge()
 
     # query -------------------------------------------------------------------
     def query(self, question: str) -> QueryResult:

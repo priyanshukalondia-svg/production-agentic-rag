@@ -13,6 +13,7 @@ import {
   PanelLeftClose,
   Search,
   Sparkles,
+  Trash2,
   User,
 } from "lucide-react";
 import "./App.css";
@@ -25,6 +26,11 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [detailsOpen, setDetailsOpen] = useState({});
+  const [customEnabled, setCustomEnabled] = useState(false);
+  const [customStatus, setCustomStatus] = useState("Default Handbook");
+  const [customKnowledge, setCustomKnowledge] = useState({ handbook: [], qa: [] });
+  const [qaForm, setQaForm] = useState({ question: "", answer: "" });
+  const [uploadName, setUploadName] = useState("");
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -32,6 +38,29 @@ function App() {
       behavior: "smooth",
     });
   }, [messages, loading]);
+
+  useEffect(() => {
+    const loadCustomKnowledge = async () => {
+      try {
+        const response = await fetch(`${API_URL}/knowledge/custom`);
+        if (!response.ok) return;
+        const data = await response.json();
+        setCustomKnowledge(data);
+        setCustomEnabled(Boolean(data.enabled));
+        setCustomStatus(
+          data.enabled
+            ? data.qa?.length || data.handbook?.length
+              ? "Custom + Default fallback"
+              : "Custom Knowledge"
+            : "Default Handbook"
+        );
+      } catch (error) {
+        console.error("Failed to load custom knowledge", error);
+      }
+    };
+
+    loadCustomKnowledge();
+  }, []);
 
   const suggestedQuestions = [
     "What is the return policy?",
@@ -104,6 +133,94 @@ function App() {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       askQuestion();
+    }
+  };
+
+  const toggleCustomKnowledge = async () => {
+    const nextValue = !customEnabled;
+    setCustomEnabled(nextValue);
+    setCustomStatus(nextValue ? "Custom Knowledge" : "Default Handbook");
+
+    try {
+      await fetch(`${API_URL}/knowledge/custom/enable`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: nextValue }),
+      });
+      const response = await fetch(`${API_URL}/knowledge/custom`);
+      if (response.ok) {
+        const data = await response.json();
+        setCustomKnowledge(data);
+        setCustomStatus(
+          data.enabled
+            ? data.qa?.length || data.handbook?.length
+              ? "Custom + Default fallback"
+              : "Custom Knowledge"
+            : "Default Handbook"
+        );
+      }
+    } catch (error) {
+      console.error("Failed to update custom knowledge", error);
+      setCustomEnabled(!nextValue);
+    }
+  };
+
+  const uploadCustomHandbook = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const response = await fetch(`${API_URL}/knowledge/custom/upload`, {
+        method: "POST",
+        body: formData,
+      });
+      if (!response.ok) throw new Error("Upload failed");
+      const data = await response.json();
+      setUploadName(data.name || file.name);
+      const detail = await fetch(`${API_URL}/knowledge/custom`);
+      if (detail.ok) {
+        const knowledge = await detail.json();
+        setCustomKnowledge(knowledge);
+      }
+    } catch (error) {
+      console.error("Custom handbook upload failed", error);
+    }
+  };
+
+  const addCustomQA = async () => {
+    if (!qaForm.question.trim() || !qaForm.answer.trim()) return;
+
+    try {
+      await fetch(`${API_URL}/knowledge/custom/qa`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: qaForm.question,
+          answer: qaForm.answer,
+        }),
+      });
+      setQaForm({ question: "", answer: "" });
+      const response = await fetch(`${API_URL}/knowledge/custom`);
+      if (response.ok) {
+        const data = await response.json();
+        setCustomKnowledge(data);
+      }
+    } catch (error) {
+      console.error("Failed to add custom Q&A", error);
+    }
+  };
+
+  const removeCustomKnowledge = async () => {
+    try {
+      await fetch(`${API_URL}/knowledge/custom`, { method: "DELETE" });
+      setCustomKnowledge({ handbook: [], qa: [] });
+      setCustomEnabled(false);
+      setCustomStatus("Default Handbook");
+    } catch (error) {
+      console.error("Failed to remove custom knowledge", error);
     }
   };
 
@@ -193,6 +310,102 @@ function App() {
                   </div>
 
                   <Check size={15} className="workspace-check" />
+                </div>
+              </div>
+
+              <div className="sidebar-section conversation-section">
+                <span className="sidebar-label">CUSTOM KNOWLEDGE</span>
+
+                <div className="custom-knowledge-panel">
+                  <div className="custom-knowledge-header">
+                    <span>Knowledge Source</span>
+                    <button
+                      className={`toggle-button ${customEnabled ? "on" : ""}`}
+                      onClick={toggleCustomKnowledge}
+                    >
+                      {customEnabled ? "Enabled" : "Disabled"}
+                    </button>
+                  </div>
+
+                  <div className="source-badge">{customStatus}</div>
+
+                  <label className="upload-box">
+                    <input type="file" onChange={uploadCustomHandbook} />
+                    <span>Add Custom Handbook</span>
+                  </label>
+
+                  {uploadName && (
+                    <div className="file-status">{uploadName}</div>
+                  )}
+
+                  {customKnowledge.handbook?.length > 0 && (
+                    <div className="knowledge-list">
+                      {customKnowledge.handbook.map((item) => (
+                        <div className="knowledge-item" key={item.id}>
+                          <FileText size={14} />
+                          <span>{item.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="qa-editor">
+                    <label>
+                      Question
+                      <input
+                        value={qaForm.question}
+                        onChange={(event) =>
+                          setQaForm((prev) => ({ ...prev, question: event.target.value }))
+                        }
+                        placeholder="What is our refund policy?"
+                      />
+                    </label>
+
+                    <label>
+                      Answer
+                      <textarea
+                        value={qaForm.answer}
+                        onChange={(event) =>
+                          setQaForm((prev) => ({ ...prev, answer: event.target.value }))
+                        }
+                        placeholder="Customers can request a refund within 14 days."
+                        rows={3}
+                      />
+                    </label>
+
+                    <button className="primary-button" onClick={addCustomQA}>
+                      Add Q&A
+                    </button>
+                  </div>
+
+                  {customKnowledge.qa?.length > 0 && (
+                    <div className="knowledge-list">
+                      {customKnowledge.qa.map((item) => (
+                        <div className="qa-item" key={item.id}>
+                          <div>
+                            <strong>{item.question}</strong>
+                            <span>{item.answer}</span>
+                          </div>
+                          <button
+                            aria-label="Delete Q&A"
+                            onClick={async () => {
+                              await fetch(`${API_URL}/knowledge/custom/qa/${item.id}`, { method: "DELETE" });
+                              const response = await fetch(`${API_URL}/knowledge/custom`);
+                              if (response.ok) {
+                                setCustomKnowledge(await response.json());
+                              }
+                            }}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <button className="secondary-button" onClick={removeCustomKnowledge}>
+                    Remove Custom Handbook
+                  </button>
                 </div>
               </div>
 
