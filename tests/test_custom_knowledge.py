@@ -32,10 +32,12 @@ def test_custom_handbook_can_be_uploaded_and_indexed():
 
 def test_custom_qa_can_be_added_and_retrieved():
     pipe = RAGPipeline(Settings())
-    pipe.add_custom_qa("What is our refund policy?", "Customers can request a refund within 14 days.")
+    expected_answer = "Customers can request a refund within 30 days."
+    pipe.add_custom_qa("What is our refund policy?", expected_answer)
     pipe.enable_custom_knowledge(True)
     res = pipe.query("What is our refund policy?")
-    assert "14 days" in res.answer.lower()
+    assert res.answer == expected_answer
+    assert "Q:" not in res.answer
     assert any("custom" in citation for citation in res.citations)
 
 

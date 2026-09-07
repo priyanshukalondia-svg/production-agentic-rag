@@ -194,6 +194,17 @@ class RAGPipeline:
             chunks_by_id = {r.chunk.id: r for h in agent_answer.hops for r in h.contexts}
             contexts = [chunks_by_id[c] for c in agent_answer.citations if c in chunks_by_id]
             answer, _ = redact_pii(agent_answer.answer)
+            custom_qa = next(
+                (
+                    result.chunk.metadata.get("answer")
+                    for result in contexts
+                    if result.chunk.metadata.get("source_type") == "qa"
+                    and result.chunk.metadata.get("answer")
+                ),
+                None,
+            )
+            if custom_qa:
+                answer, _ = redact_pii(custom_qa)
             faith = grounding_score(answer, [c.chunk.text for c in contexts])
         return QueryResult(question, answer, agent_answer.citations, contexts,
                            faith, agent_answer.iterations, trace=tracer.summary())
