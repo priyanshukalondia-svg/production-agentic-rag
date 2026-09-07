@@ -67,9 +67,27 @@ button {
 
 .sidebar-inner {
   height: 100%;
+  min-height: 0;
   padding: 18px 14px;
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+.sidebar-inner::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar-inner::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-inner::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 20px;
 }
 
 .brand-row {
@@ -342,11 +360,22 @@ button {
   align-items: flex-start;
 }
 
+.qa-item > div {
+  min-width: 0;
+  flex: 1;
+}
+
 .qa-item strong {
   display: block;
   color: #edf1ff;
   font-size: 11px;
   margin-bottom: 3px;
+  overflow-wrap: anywhere;
+}
+
+.qa-item span {
+  display: block;
+  overflow-wrap: anywhere;
 }
 
 .qa-item button,
@@ -359,6 +388,7 @@ button {
 }
 
 .qa-item button {
+  flex-shrink: 0;
   padding: 7px;
 }
 
@@ -413,7 +443,7 @@ button {
 }
 
 .conversation-section {
-  flex: 1;
+  flex: none;
 }
 
 .conversation-item {
