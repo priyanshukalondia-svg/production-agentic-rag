@@ -275,6 +275,16 @@ button {
   text-align: center;
 }
 
+.knowledge-error {
+  padding: 9px 10px;
+  border: 1px solid rgba(255, 125, 125, 0.28);
+  border-radius: 9px;
+  color: #ffb0b0;
+  background: rgba(255, 91, 91, 0.08);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
 .upload-box {
   display: flex;
   align-items: center;

@@ -20,17 +20,29 @@ import "./App.css";
 
 const API_URL = "https://production-agentic-rag.onrender.com";
 
+const getCustomStatus = (data) =>
+  data.enabled
+    ? data.qa?.length || data.handbook?.length
+      ? "Custom + Default fallback"
+      : "Custom Knowledge"
+    : "Default Handbook";
+
 function App() {
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(() =>
+    typeof window === "undefined"
+      ? true
+      : !window.matchMedia("(max-width: 850px)").matches
+  );
   const [detailsOpen, setDetailsOpen] = useState({});
   const [customEnabled, setCustomEnabled] = useState(false);
   const [customStatus, setCustomStatus] = useState("Default Handbook");
   const [customKnowledge, setCustomKnowledge] = useState({ handbook: [], qa: [] });
   const [qaForm, setQaForm] = useState({ question: "", answer: "" });
   const [uploadName, setUploadName] = useState("");
+  const [customError, setCustomError] = useState("");
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -43,19 +55,15 @@ function App() {
     const loadCustomKnowledge = async () => {
       try {
         const response = await fetch(`${API_URL}/knowledge/custom`);
-        if (!response.ok) return;
+        if (!response.ok) throw new Error(`Server error: ${response.status}`);
         const data = await response.json();
         setCustomKnowledge(data);
         setCustomEnabled(Boolean(data.enabled));
-        setCustomStatus(
-          data.enabled
-            ? data.qa?.length || data.handbook?.length
-              ? "Custom + Default fallback"
-              : "Custom Knowledge"
-            : "Default Handbook"
-        );
+        setCustomStatus(getCustomStatus(data));
+        setCustomError("");
       } catch (error) {
         console.error("Failed to load custom knowledge", error);
+        setCustomError("Custom knowledge is unavailable. Check the backend deployment.");
       }
     };
 
@@ -138,30 +146,26 @@ function App() {
 
   const toggleCustomKnowledge = async () => {
     const nextValue = !customEnabled;
-    setCustomEnabled(nextValue);
-    setCustomStatus(nextValue ? "Custom Knowledge" : "Default Handbook");
 
     try {
-      await fetch(`${API_URL}/knowledge/custom/enable`, {
+      const toggleResponse = await fetch(`${API_URL}/knowledge/custom/enable`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled: nextValue }),
       });
+      if (!toggleResponse.ok) throw new Error(`Server error: ${toggleResponse.status}`);
+
       const response = await fetch(`${API_URL}/knowledge/custom`);
-      if (response.ok) {
-        const data = await response.json();
-        setCustomKnowledge(data);
-        setCustomStatus(
-          data.enabled
-            ? data.qa?.length || data.handbook?.length
-              ? "Custom + Default fallback"
-              : "Custom Knowledge"
-            : "Default Handbook"
-        );
-      }
+      if (!response.ok) throw new Error(`Server error: ${response.status}`);
+
+      const data = await response.json();
+      setCustomEnabled(Boolean(data.enabled));
+      setCustomKnowledge(data);
+      setCustomStatus(getCustomStatus(data));
+      setCustomError("");
     } catch (error) {
       console.error("Failed to update custom knowledge", error);
-      setCustomEnabled(!nextValue);
+      setCustomError("Could not update custom knowledge. Check the backend deployment.");
     }
   };
 
@@ -181,12 +185,15 @@ function App() {
       const data = await response.json();
       setUploadName(data.name || file.name);
       const detail = await fetch(`${API_URL}/knowledge/custom`);
-      if (detail.ok) {
-        const knowledge = await detail.json();
-        setCustomKnowledge(knowledge);
-      }
+      if (!detail.ok) throw new Error(`Server error: ${detail.status}`);
+
+      const knowledge = await detail.json();
+      setCustomKnowledge(knowledge);
+      setCustomStatus(getCustomStatus(knowledge));
+      setCustomError("");
     } catch (error) {
       console.error("Custom handbook upload failed", error);
+      setCustomError("Could not upload the handbook. Check the backend deployment.");
     }
   };
 
@@ -194,7 +201,7 @@ function App() {
     if (!qaForm.question.trim() || !qaForm.answer.trim()) return;
 
     try {
-      await fetch(`${API_URL}/knowledge/custom/qa`, {
+      const response = await fetch(`${API_URL}/knowledge/custom/qa`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -202,25 +209,54 @@ function App() {
           answer: qaForm.answer,
         }),
       });
+      if (!response.ok) throw new Error(`Server error: ${response.status}`);
+
       setQaForm({ question: "", answer: "" });
-      const response = await fetch(`${API_URL}/knowledge/custom`);
-      if (response.ok) {
-        const data = await response.json();
-        setCustomKnowledge(data);
-      }
+      const detailResponse = await fetch(`${API_URL}/knowledge/custom`);
+      if (!detailResponse.ok) throw new Error(`Server error: ${detailResponse.status}`);
+
+      const data = await detailResponse.json();
+      setCustomKnowledge(data);
+      setCustomStatus(getCustomStatus(data));
+      setCustomError("");
     } catch (error) {
       console.error("Failed to add custom Q&A", error);
+      setCustomError("Could not add Q&A. Check the backend deployment.");
     }
   };
 
   const removeCustomKnowledge = async () => {
     try {
-      await fetch(`${API_URL}/knowledge/custom`, { method: "DELETE" });
+      const response = await fetch(`${API_URL}/knowledge/custom`, { method: "DELETE" });
+      if (!response.ok) throw new Error(`Server error: ${response.status}`);
+
       setCustomKnowledge({ handbook: [], qa: [] });
       setCustomEnabled(false);
       setCustomStatus("Default Handbook");
+      setCustomError("");
     } catch (error) {
       console.error("Failed to remove custom knowledge", error);
+      setCustomError("Could not remove custom knowledge. Check the backend deployment.");
+    }
+  };
+
+  const deleteCustomQA = async (qaId) => {
+    try {
+      const response = await fetch(`${API_URL}/knowledge/custom/qa/${qaId}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) throw new Error(`Server error: ${response.status}`);
+
+      const detailResponse = await fetch(`${API_URL}/knowledge/custom`);
+      if (!detailResponse.ok) throw new Error(`Server error: ${detailResponse.status}`);
+
+      const data = await detailResponse.json();
+      setCustomKnowledge(data);
+      setCustomStatus(getCustomStatus(data));
+      setCustomError("");
+    } catch (error) {
+      console.error("Failed to delete custom Q&A", error);
+      setCustomError("Could not delete Q&A. Check the backend deployment.");
     }
   };
 
@@ -329,6 +365,12 @@ function App() {
 
                   <div className="source-badge">{customStatus}</div>
 
+                  {customError && (
+                    <div className="knowledge-error" role="alert">
+                      {customError}
+                    </div>
+                  )}
+
                   <label className="upload-box">
                     <input type="file" onChange={uploadCustomHandbook} />
                     <span>Add Custom Handbook</span>
@@ -388,13 +430,7 @@ function App() {
                           </div>
                           <button
                             aria-label="Delete Q&A"
-                            onClick={async () => {
-                              await fetch(`${API_URL}/knowledge/custom/qa/${item.id}`, { method: "DELETE" });
-                              const response = await fetch(`${API_URL}/knowledge/custom`);
-                              if (response.ok) {
-                                setCustomKnowledge(await response.json());
-                              }
-                            }}
+                            onClick={() => deleteCustomQA(item.id)}
                           >
                             <Trash2 size={13} />
                           </button>
