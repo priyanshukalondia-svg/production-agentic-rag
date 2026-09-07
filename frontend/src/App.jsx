@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import "./App.css";
 
-const API_URL = "https://production-agentic-rag.onrender.com";
+const API_URL = import.meta.env.VITE_API_URL || "https://production-agentic-rag-1.onrender.com";
 
 const getCustomStatus = (data) =>
   data.enabled
@@ -354,16 +354,28 @@ function App() {
 
                 <div className="custom-knowledge-panel">
                   <div className="custom-knowledge-header">
-                    <span>Knowledge Source</span>
+                    <div className="knowledge-heading">
+                      <span className="knowledge-heading-icon">
+                        <Database size={13} />
+                      </span>
+                      <span>Knowledge Source</span>
+                    </div>
                     <button
                       className={`toggle-button ${customEnabled ? "on" : ""}`}
                       onClick={toggleCustomKnowledge}
+                      aria-pressed={customEnabled}
                     >
+                      <span className="toggle-dot" />
                       {customEnabled ? "Enabled" : "Disabled"}
                     </button>
                   </div>
 
-                  <div className="source-badge">{customStatus}</div>
+                  <div className="source-row">
+                    <div className="source-badge">{customStatus}</div>
+                    <span className="source-count">
+                      {customKnowledge.handbook.length + customKnowledge.qa.length} items
+                    </span>
+                  </div>
 
                   {customError && (
                     <div className="knowledge-error" role="alert">
