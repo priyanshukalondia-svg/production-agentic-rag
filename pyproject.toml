@@ -15,7 +15,7 @@ dependencies = []
 
 [project.optional-dependencies]
 openai = ["openai>=1.0"]
-api = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "pydantic>=2.6"]
+api = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "pydantic>=2.6", "python-multipart>=0.0.9"]
 gateway = ["mcp-tool-gateway @ git+https://github.com/chandanCoding/mcp-tool-gateway"]
 observability = ["llm-observability @ git+https://github.com/chandanCoding/llm-observability"]
 langgraph = ["langgraph>=0.2.0"]
