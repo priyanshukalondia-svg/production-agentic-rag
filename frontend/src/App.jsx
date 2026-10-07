@@ -18,7 +18,15 @@ import {
 } from "lucide-react";
 import "./App.css";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_URL = (() => {
+  const configured = import.meta.env.VITE_API_URL;
+  if (!configured || !configured.trim()) {
+    throw new Error(
+      "VITE_API_URL is required. Set it to the public Render backend URL in Vercel or in frontend/.env.local for local development."
+    );
+  }
+  return configured.replace(/\/+$/, "");
+})();
 const INITIAL_MESSAGE = "Hi! I'm your AI assistant. I can chat normally and also answer questions using the available handbook and custom knowledge. How can I help?";
 
 const getCustomStatus = (data) =>

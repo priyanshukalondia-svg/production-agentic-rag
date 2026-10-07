@@ -16,6 +16,7 @@ from production_agentic_rag.ingestion.loaders import load_directory
 app = FastAPI(title="Production Agentic RAG", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_origins=[
         "http://localhost:5173",
         "http://localhost:5174",
@@ -25,7 +26,6 @@ app.add_middleware(
         "http://127.0.0.1:5175",
         "http://127.0.0.1:4173",
         "http://localhost:4173",
-        "https://frontend-five-phi-44.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
