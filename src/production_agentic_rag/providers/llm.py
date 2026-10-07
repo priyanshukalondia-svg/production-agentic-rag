@@ -29,13 +29,32 @@ class MockLLM:
     """
 
     def complete(self, system: str, user: str) -> LLMResult:
-        ctx_match = re.search(r"Context:\s*(.*?)\n\s*Question:", user, re.S)
-        q_match = re.search(r"Question:\s*(.*)", user, re.S)
+        ctx_match = re.search(r"Context:\s*(.*?)\n\s*(?:Latest user question|Question):", user, re.S)
+        q_match = re.search(r"(?:Latest user question|Question):\s*(.*?)(?:\n\nAnswer:|$)", user, re.S)
         context = ctx_match.group(1).strip() if ctx_match else ""
         question = q_match.group(1).strip() if q_match else user
         if not context:
             return LLMResult(text="I don't have enough grounded context to answer that.",
                              usage={"prompt_tokens": len(user.split()), "completion_tokens": 12})
+
+        lower_question = question.lower()
+        lower_context = context.lower()
+        if "opened" in lower_question or "open" in lower_question or "box" in lower_question:
+            if "unused" in lower_context and "original packaging" in lower_context:
+                if "used" in lower_question or "have used" in lower_question:
+                    answer = (
+                        "The policy is focused on whether the item remains unused and in its original packaging. "
+                        "Because you have already used it, the available return terms do not clearly support a return."
+                    )
+                else:
+                    answer = (
+                        "The policy does not explicitly say that opening the box alone disqualifies a return. "
+                        "It focuses on whether the item is still unused and in its original packaging, so the answer depends on whether the product has been used and whether the packaging is still intact."
+                    )
+                return LLMResult(text=answer,
+                                 usage={"prompt_tokens": len(user.split()),
+                                        "completion_tokens": len(answer.split())})
+
         q = set(tokenize(question))
         scored = sorted(sentences(context),
                         key=lambda s: len(q & set(tokenize(s))), reverse=True)

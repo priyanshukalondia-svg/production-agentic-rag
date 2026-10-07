@@ -561,6 +561,16 @@ button {
   box-shadow: 0 0 12px rgba(53, 208, 127, 0.7);
 }
 
+.status-indicator.connecting span {
+  background: #fbbf24;
+  box-shadow: 0 0 12px rgba(251, 191, 36, 0.7);
+}
+
+.status-indicator.offline span {
+  background: #f87171;
+  box-shadow: 0 0 12px rgba(248, 113, 113, 0.7);
+}
+
 .system-status-card div:last-child {
   display: flex;
   flex-direction: column;
@@ -659,6 +669,16 @@ button {
   border-radius: 50%;
   background: #35d07f;
   box-shadow: 0 0 10px rgba(53, 208, 127, 0.65);
+}
+
+.live-dot.connecting {
+  background: #fbbf24;
+  box-shadow: 0 0 10px rgba(251, 191, 36, 0.65);
+}
+
+.live-dot.offline {
+  background: #f87171;
+  box-shadow: 0 0 10px rgba(248, 113, 113, 0.65);
 }
 
 /* =========================

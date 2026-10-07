@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+﻿import { useEffect, useRef, useState } from "react";
 import {
   ArrowUp,
   Bot,
@@ -18,7 +18,8 @@ import {
 } from "lucide-react";
 import "./App.css";
 
-const API_URL = import.meta.env.VITE_API_URL || "https://production-agentic-rag-1.onrender.com";
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const INITIAL_MESSAGE = "Hi! I'm your AI assistant. I can chat normally and also answer questions using the available handbook and custom knowledge. How can I help?";
 
 const getCustomStatus = (data) =>
   data.enabled
@@ -27,9 +28,25 @@ const getCustomStatus = (data) =>
       : "Custom Knowledge"
     : "Default Handbook";
 
+const buildHistory = (messages) =>
+  messages
+    .filter((message) => message && ["user", "assistant"].includes(message.role))
+    .map(({ role, content }) => ({ role, content: String(content || "").slice(0, 2000) }));
+
 function App() {
   const [question, setQuestion] = useState("");
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState([
+    {
+      role: "assistant",
+      content: INITIAL_MESSAGE,
+    },
+  ]);
+  const [conversationId, setConversationId] = useState(() => {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    return `conversation-${Date.now()}`;
+  });
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(() =>
     typeof window === "undefined"
@@ -43,12 +60,11 @@ function App() {
   const [qaForm, setQaForm] = useState({ question: "", answer: "" });
   const [uploadName, setUploadName] = useState("");
   const [customError, setCustomError] = useState("");
+  const [backendStatus, setBackendStatus] = useState("Connecting");
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({
-      behavior: "smooth",
-    });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
   useEffect(() => {
@@ -70,6 +86,31 @@ function App() {
     loadCustomKnowledge();
   }, []);
 
+  useEffect(() => {
+    let active = true;
+
+    const checkHealth = async () => {
+      try {
+        const response = await fetch(`${API_URL}/health`, { cache: "no-store" });
+        if (!response.ok) throw new Error(`Health error: ${response.status}`);
+        const data = await response.json();
+        if (!active) return;
+
+        setBackendStatus(data.status === "ok" || data.status === "healthy" ? "Online" : "Connecting");
+      } catch (error) {
+        if (!active) return;
+        setBackendStatus("Offline");
+      }
+    };
+
+    checkHealth();
+    const interval = window.setInterval(checkHealth, 15000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, []);
+
   const suggestedQuestions = [
     "What is the return policy?",
     "How long do refunds take?",
@@ -81,25 +122,27 @@ function App() {
 
     if (!userQuestion || loading) return;
 
-    setMessages((prev) => [
-      ...prev,
-      {
-        role: "user",
-        content: userQuestion,
-      },
-    ]);
+    const userMessage = {
+      role: "user",
+      content: userQuestion,
+    };
 
+    const history = buildHistory([...messages, userMessage]);
+
+    setMessages((prev) => [...prev, userMessage]);
     setQuestion("");
     setLoading(true);
 
     try {
-      const response = await fetch(`${API_URL}/ask`, {
+      const response = await fetch(`${API_URL}/chat`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          question: userQuestion,
+          message: userQuestion,
+          conversation_id: conversationId,
+          history,
         }),
       });
 
@@ -108,14 +151,15 @@ function App() {
       }
 
       const data = await response.json();
+      setConversationId(data.conversation_id || conversationId);
 
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: data.answer,
+          content: data.message,
           citations: data.citations || [],
-          faithfulness: data.faithfulness,
+          grounding: data.grounding,
           iterations: data.iterations,
           blocked: data.blocked,
         },
@@ -128,7 +172,7 @@ function App() {
         {
           role: "assistant",
           content:
-            "I couldn't connect to the RAG server. The backend may be waking up or temporarily unavailable. Please try again in a moment.",
+            "I'm having trouble connecting to the knowledge service right now. Please try again.",
           error: true,
         },
       ]);
@@ -261,8 +305,16 @@ function App() {
   };
 
   const clearChat = () => {
-    setMessages([]);
+    setMessages([
+      {
+        role: "assistant",
+        content: INITIAL_MESSAGE,
+      },
+    ]);
     setQuestion("");
+    setConversationId(
+      typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `conversation-${Date.now()}`
+    );
     setDetailsOpen({});
   };
 
@@ -295,7 +347,6 @@ function App() {
 
   return (
     <div className="app-shell">
-      {/* Sidebar */}
       <aside className={`sidebar ${sidebarOpen ? "open" : "collapsed"}`}>
         <div className="sidebar-inner">
           <div className="brand-row">
@@ -307,19 +358,13 @@ function App() {
               {sidebarOpen && (
                 <div className="brand-text">
                   <span className="brand-name">Agentic RAG</span>
-                  <span className="brand-subtitle">
-                    Knowledge Intelligence
-                  </span>
+                  <span className="brand-subtitle">Knowledge Intelligence</span>
                 </div>
               )}
             </div>
 
             {sidebarOpen && (
-              <button
-                className="icon-button sidebar-toggle"
-                onClick={() => setSidebarOpen(false)}
-                title="Collapse sidebar"
-              >
+              <button className="icon-button sidebar-toggle" onClick={() => setSidebarOpen(false)} title="Collapse sidebar">
                 <PanelLeftClose size={18} />
               </button>
             )}
@@ -360,11 +405,7 @@ function App() {
                       </span>
                       <span>Knowledge Source</span>
                     </div>
-                    <button
-                      className={`toggle-button ${customEnabled ? "on" : ""}`}
-                      onClick={toggleCustomKnowledge}
-                      aria-pressed={customEnabled}
-                    >
+                    <button className={`toggle-button ${customEnabled ? "on" : ""}`} onClick={toggleCustomKnowledge} aria-pressed={customEnabled}>
                       <span className="toggle-dot" />
                       {customEnabled ? "Enabled" : "Disabled"}
                     </button>
@@ -372,9 +413,7 @@ function App() {
 
                   <div className="source-row">
                     <div className="source-badge">{customStatus}</div>
-                    <span className="source-count">
-                      {customKnowledge.handbook.length + customKnowledge.qa.length} items
-                    </span>
+                    <span className="source-count">{customKnowledge.handbook.length + customKnowledge.qa.length} items</span>
                   </div>
 
                   {customError && (
@@ -388,9 +427,7 @@ function App() {
                     <span>Add Custom Handbook</span>
                   </label>
 
-                  {uploadName && (
-                    <div className="file-status">{uploadName}</div>
-                  )}
+                  {uploadName && <div className="file-status">{uploadName}</div>}
 
                   {customKnowledge.handbook?.length > 0 && (
                     <div className="knowledge-list">
@@ -408,9 +445,7 @@ function App() {
                       Question
                       <input
                         value={qaForm.question}
-                        onChange={(event) =>
-                          setQaForm((prev) => ({ ...prev, question: event.target.value }))
-                        }
+                        onChange={(event) => setQaForm((prev) => ({ ...prev, question: event.target.value }))}
                         placeholder="What is our refund policy?"
                       />
                     </label>
@@ -419,9 +454,7 @@ function App() {
                       Answer
                       <textarea
                         value={qaForm.answer}
-                        onChange={(event) =>
-                          setQaForm((prev) => ({ ...prev, answer: event.target.value }))
-                        }
+                        onChange={(event) => setQaForm((prev) => ({ ...prev, answer: event.target.value }))}
                         placeholder="Customers can request a refund within 14 days."
                         rows={3}
                       />
@@ -440,10 +473,7 @@ function App() {
                             <strong>{item.question}</strong>
                             <span>{item.answer}</span>
                           </div>
-                          <button
-                            aria-label="Delete Q&A"
-                            onClick={() => deleteCustomQA(item.id)}
-                          >
+                          <button aria-label="Delete Q&A" onClick={() => deleteCustomQA(item.id)}>
                             <Trash2 size={13} />
                           </button>
                         </div>
@@ -468,13 +498,19 @@ function App() {
 
               <div className="sidebar-footer">
                 <div className="system-status-card">
-                  <div className="status-indicator">
+                  <div className={`status-indicator ${backendStatus.toLowerCase()}`}>
                     <span></span>
                   </div>
 
                   <div>
-                    <strong>System operational</strong>
-                    <span>RAG pipeline online</span>
+                    <strong>{backendStatus === "Online" ? "System operational" : backendStatus}</strong>
+                    <span>
+                      {backendStatus === "Online"
+                        ? "RAG pipeline online"
+                        : backendStatus === "Connecting"
+                          ? "Checking backend..."
+                          : "Backend unavailable"}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -483,11 +519,7 @@ function App() {
 
           {!sidebarOpen && (
             <div className="collapsed-sidebar-actions">
-              <button
-                className="icon-button"
-                onClick={() => setSidebarOpen(true)}
-                title="Open sidebar"
-              >
+              <button className="icon-button" onClick={() => setSidebarOpen(true)} title="Open sidebar">
                 <Menu size={19} />
               </button>
             </div>
@@ -495,17 +527,11 @@ function App() {
         </div>
       </aside>
 
-      {/* Main Application */}
       <main className="main-content">
-        {/* Top Bar */}
         <header className="topbar">
           <div className="topbar-left">
             {!sidebarOpen && (
-              <button
-                className="icon-button mobile-sidebar-button"
-                onClick={() => setSidebarOpen(true)}
-                title="Open sidebar"
-              >
+              <button className="icon-button mobile-sidebar-button" onClick={() => setSidebarOpen(true)} title="Open sidebar">
                 <Menu size={20} />
               </button>
             )}
@@ -517,12 +543,11 @@ function App() {
           </div>
 
           <div className="topbar-status">
-            <span className="live-dot"></span>
-            <span>Online</span>
+            <span className={`live-dot ${backendStatus.toLowerCase()}`}></span>
+            <span>{backendStatus}</span>
           </div>
         </header>
 
-        {/* Chat Area */}
         <section className="chat-area">
           {messages.length === 0 ? (
             <div className="empty-state">
@@ -532,19 +557,11 @@ function App() {
 
               <h2>What would you like to know?</h2>
 
-              <p>
-                Search your knowledge base with an intelligent,
-                citation-aware AI assistant.
-              </p>
+              <p>Chat naturally and ask questions using the available handbook and custom knowledge.</p>
 
               <div className="suggestions">
                 {suggestedQuestions.map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    className="suggestion-card"
-                    onClick={() => askQuestion(suggestion)}
-                    disabled={loading}
-                  >
+                  <button key={suggestion} className="suggestion-card" onClick={() => askQuestion(suggestion)} disabled={loading}>
                     <div className="suggestion-icon">
                       <Search size={17} />
                     </div>
@@ -559,10 +576,7 @@ function App() {
           ) : (
             <div className="messages-container">
               {messages.map((message, index) => (
-                <div
-                  key={index}
-                  className={`message-row ${message.role}`}
-                >
+                <div key={`${message.role}-${index}`} className={`message-row ${message.role}`}>
                   {message.role === "assistant" && (
                     <div className="assistant-avatar">
                       <Sparkles size={17} />
@@ -570,28 +584,13 @@ function App() {
                   )}
 
                   <div className="message-wrapper">
-                    <div className="message-label">
-                      {message.role === "assistant"
-                        ? "Agentic RAG"
-                        : "You"}
-                    </div>
+                    <div className="message-label">{message.role === "assistant" ? "Assistant" : "You"}</div>
 
-                    <div
-                      className={`message-text ${
-                        message.error ? "error" : ""
-                      }`}
-                    >
-                      {message.content}
-                    </div>
+                    <div className={`message-text ${message.error ? "error" : ""}`}>{message.content}</div>
 
                     {message.role === "assistant" && !message.error && (
                       <div className="message-actions">
-                        <button
-                          className="message-action"
-                          onClick={() =>
-                            copyMessage(message.content, index)
-                          }
-                        >
+                        <button className="message-action" onClick={() => copyMessage(message.content, index)}>
                           {detailsOpen[`copied-${index}`] ? (
                             <>
                               <Check size={14} />
@@ -605,80 +604,58 @@ function App() {
                           )}
                         </button>
 
-                        {message.citations?.length > 0 && (
-                          <button
-                            className="message-action"
-                            onClick={() => toggleDetails(index)}
-                          >
+                        {Array.isArray(message.citations) && message.citations.length > 0 && (
+                          <button className="message-action" onClick={() => toggleDetails(index)}>
                             <FileText size={14} />
                             Sources & details
 
-                            {detailsOpen[index] ? (
-                              <ChevronDown size={14} />
-                            ) : (
-                              <ChevronRight size={14} />
-                            )}
+                            {detailsOpen[index] ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                           </button>
                         )}
                       </div>
                     )}
 
-                    {message.role === "assistant" &&
-                      detailsOpen[index] && (
-                        <div className="response-details">
-                          {message.citations?.length > 0 && (
-                            <div className="sources-section">
-                              <span className="detail-label">
-                                SOURCES
-                              </span>
+                    {message.role === "assistant" && detailsOpen[index] && (
+                      <div className="response-details">
+                        {Array.isArray(message.citations) && message.citations.length > 0 && (
+                          <div className="sources-section">
+                            <span className="detail-label">SOURCES</span>
 
-                              <div className="source-chips">
-                                {message.citations.map((citation) => (
-                                  <div
-                                    className="source-chip"
-                                    key={citation}
-                                  >
-                                    <FileText size={13} />
-                                    {citation}
-                                  </div>
-                                ))}
-                              </div>
+                            <div className="source-chips">
+                              {message.citations.map((citation) => (
+                                <div className="source-chip" key={citation}>
+                                  <FileText size={13} />
+                                  {citation}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="quality-grid">
+                          {message.grounding !== undefined && message.grounding !== null && (
+                            <div className="quality-item">
+                              <span>GROUNDING</span>
+                              <strong>{Math.round(message.grounding * 100)}%</strong>
                             </div>
                           )}
 
-                          <div className="quality-grid">
-                            {message.faithfulness !== undefined && (
-                              <div className="quality-item">
-                                <span>GROUNDING</span>
-                                <strong>
-                                  {Math.round(
-                                    message.faithfulness * 100
-                                  )}
-                                  %
-                                </strong>
-                              </div>
-                            )}
+                          {message.iterations !== undefined && (
+                            <div className="quality-item">
+                              <span>REASONING PASSES</span>
+                              <strong>{message.iterations}</strong>
+                            </div>
+                          )}
 
-                            {message.iterations !== undefined && (
-                              <div className="quality-item">
-                                <span>REASONING PASSES</span>
-                                <strong>{message.iterations}</strong>
-                              </div>
-                            )}
-
-                            {message.blocked !== undefined && (
-                              <div className="quality-item">
-                                <span>SAFETY</span>
-                                <strong>
-                                  {message.blocked
-                                    ? "Blocked"
-                                    : "Passed"}
-                                </strong>
-                              </div>
-                            )}
-                          </div>
+                          {message.blocked !== undefined && (
+                            <div className="quality-item">
+                              <span>SAFETY</span>
+                              <strong>{message.blocked ? "Blocked" : "Passed"}</strong>
+                            </div>
+                          )}
                         </div>
-                      )}
+                      </div>
+                    )}
                   </div>
 
                   {message.role === "user" && (
@@ -696,9 +673,7 @@ function App() {
                   </div>
 
                   <div className="message-wrapper">
-                    <div className="message-label">
-                      Agentic RAG
-                    </div>
+                    <div className="message-label">Assistant</div>
 
                     <div className="thinking-state">
                       <div className="thinking-dots">
@@ -707,7 +682,7 @@ function App() {
                         <span></span>
                       </div>
 
-                      <span>Searching knowledge base...</span>
+                      <span>Thinking...</span>
                     </div>
                   </div>
                 </div>
@@ -718,24 +693,18 @@ function App() {
           )}
         </section>
 
-        {/* Input */}
         <div className="composer-wrapper">
           <div className="composer">
             <textarea
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask anything about your knowledge base..."
+              placeholder="Message the assistant..."
               rows={1}
               disabled={loading}
             />
 
-            <button
-              className="send-button"
-              onClick={() => askQuestion()}
-              disabled={!question.trim() || loading}
-              title="Send message"
-            >
+            <button className="send-button" onClick={() => askQuestion()} disabled={!question.trim() || loading} title="Send message">
               <ArrowUp size={20} />
             </button>
           </div>
@@ -747,10 +716,6 @@ function App() {
 
             <span>
               <kbd>Shift + Enter</kbd> for a new line
-            </span>
-
-            <span className="powered-by">
-              Powered by hybrid retrieval
             </span>
           </div>
         </div>

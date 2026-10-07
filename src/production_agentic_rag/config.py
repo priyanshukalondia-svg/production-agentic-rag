@@ -25,6 +25,13 @@ class Settings:
     max_iterations: int = field(default_factory=lambda: int(_env("RAG_MAX_ITERS", "2")))
     engine: str = field(default_factory=lambda: _env("RAG_ENGINE", "agent"))  # agent | langgraph
     faithfulness_threshold: float = field(default_factory=lambda: float(_env("RAG_FAITHFULNESS", "0.6")))
+    # chat orchestration
+    chat_history_max_messages: int = field(default_factory=lambda: int(_env("CHAT_HISTORY_MAX_MESSAGES", "10")))
+    chat_router_enabled: bool = field(default_factory=lambda: _env("CHAT_ROUTER_ENABLED", "1") == "1")
+    chat_query_rewrite_enabled: bool = field(default_factory=lambda: _env("CHAT_QUERY_REWRITE_ENABLED", "1") == "1")
+    chat_general_knowledge_enabled: bool = field(default_factory=lambda: _env("CHAT_GENERAL_KNOWLEDGE_ENABLED", "1") == "1")
+    chat_summarization_enabled: bool = field(default_factory=lambda: _env("CHAT_SUMMARIZATION_ENABLED", "0") == "1")
+    rag_debug: bool = field(default_factory=lambda: _env("RAG_DEBUG", "0") == "1")
 
     @classmethod
     def from_env(cls) -> "Settings":

@@ -10,9 +10,12 @@ from .planner import plan
 from .tools import RetrievalTool
 
 _SYSTEM = (
-    "You are a precise assistant. Answer ONLY from the provided context. "
-    "If the context is insufficient, say so. Be concise and cite nothing you "
-    "cannot support from the context."
+    "You are a conversational assistant with access to authoritative company policy. "
+    "Use the retrieved knowledge to answer the user's actual question, not to repeat or copy the source text verbatim. "
+    "Interpret how the policy applies to the user's situation, using the conversation history when relevant. "
+    "State clearly what the handbook explicitly says, what can reasonably be inferred, and what remains uncertain. "
+    "Never invent company rules or pretend a policy exists when it is silent. "
+    "Prefer a direct answer in natural language using 'you' and 'your item' when appropriate."
 )
 
 
@@ -32,9 +35,17 @@ class AgentAnswer:
     citations: list[str] = field(default_factory=list)
 
 
-def _build_prompt(question: str, contexts: list[str]) -> str:
+def _build_prompt(question: str, contexts: list[str], *, history: list[dict[str, str]] | None = None) -> str:
     joined = "\n---\n".join(contexts)
-    return f"Context:\n{joined}\n\nQuestion: {question}\nAnswer:"
+    history_block = ""
+    if history:
+        lines = [f"{item['role'].title()}: {item['content']}" for item in history if item.get("content")]
+        history_block = "\n".join(lines) + "\n"
+    return (
+        f"{history_block}Context:\n{joined}\n\nLatest user question: {question}\n\n"
+        "Answer in a natural conversational way. Explain how the policy applies to the user's real situation, "
+        "and distinguish between what the policy explicitly says and what is uncertain. Do not quote the source passage verbatim.\nAnswer:"
+    )
 
 
 @dataclass
@@ -63,7 +74,7 @@ class AgenticRAG:
                         seen.setdefault(r.chunk.id, r)
                 contexts = [r.chunk.text for r in seen.values()]
                 with tracer.span("synthesize"):
-                    result = self.llm.complete(_SYSTEM, _build_prompt(question, contexts))
+                    result = self.llm.complete(_SYSTEM, _build_prompt(question, contexts, history=[]))
                     tracer.record_usage(self.model, result.usage)
                 faith = grounding_score(result.text, contexts)
                 candidate = AgentAnswer(question, result.text, hops, faith, iteration,
